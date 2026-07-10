@@ -4,8 +4,12 @@ from google import genai
 from PIL import Image
 import os
 
-# 1. 스트림릿 페이지 설정 (와이드 모드로 변경하여 시원한 레이아웃 제공)
+# 1. 스트림릿 페이지 설정 (와이드 모드)
 st.set_page_config(page_title="나사 결함 탐지 AI 시스템", layout="wide", initial_sidebar_state="expanded")
+
+# 세션 상태 초기화 (API 인증 여부 저장용)
+if "api_authenticated" not in st.session_state:
+    st.session_state.api_authenticated = False
 
 # 커스텀 타이틀 스타일 적용
 st.markdown("""
@@ -18,13 +22,38 @@ st.markdown("""
 st.markdown('<div class="main-title">🔩 나사 결함 정밀 검사 시스템</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-title">YOLOv8 Object Detection과 Gemini Vision AI를 결합한 가공 부품 품질 검사 솔루션</div>', unsafe_allow_html=True)
 
-# 2. 사이드바 구성 (디자인 개선)
+# 2. 사이드바 구성 (API Key 입력 및 [인증] 버튼 추가)
 st.sidebar.header("⚙️ 시스템 설정")
 user_api_key = st.sidebar.text_input(
     "Google Gemini API Key", 
     type="password", 
     placeholder="AIzaSy..."
 )
+
+# [추가 기능] API 키 인증 버튼 및 로직
+if st.sidebar.button("인증", use_container_width=True):
+    if user_api_key:
+        with st.sidebar.spinner("API 키 검증 중..."):
+            try:
+                # 실제로 작동하는 가벼운 API 호출을 시도하여 키를 검증합니다.
+                test_client = genai.Client(api_key=user_api_key)
+                # 모델 리스트를 가볍게 호출하여 인증이 유효한지 확인
+                test_client.models.get(model='gemini-2.5-flash')
+                
+                st.session_state.api_authenticated = True
+                st.session_state.verified_key = user_api_key # 인증 성공한 키 저장
+            except Exception as e:
+                st.session_state.api_authenticated = False
+                st.sidebar.error("❌ 잘못된 API 키이거나 통신 오류입니다.")
+    else:
+        st.sidebar.warning("⚠️ API 키를 입력해주세요.")
+
+# 인증 결과 알림 표시
+if st.session_state.api_authenticated:
+    st.sidebar.success("✅ Gemini API 인증 성공!")
+else:
+    st.sidebar.info("🔓 API 키를 입력하고 인증 버튼을 눌러주세요.")
+
 st.sidebar.markdown("[🔑 API 키 발급받기](https://aistudio.google.com/)")
 st.sidebar.write("---")
 
@@ -52,15 +81,13 @@ if uploaded_file is not None:
     original_image = Image.open(uploaded_file)
     
     # 5. API 및 모델 검증 후 대시보드 작동
-    if not user_api_key:
-        st.info("💡 좌측 사이드바에 Gemini API 키를 입력하면 정밀 리포트 기능이 활성화됩니다.")
+    if not st.session_state.api_authenticated:
+        st.info("💡 좌측 사이드바에서 Gemini API 키를 입력하고 [인증] 버튼을 눌러야 정밀 리포트 기능이 활성화됩니다.")
     elif not yolo_model:
         st.error("YOLO 모델이 준비되지 않았습니다.")
     else:
         # 탐지 실행 버튼
         if st.button("⚡ 탐지 및 정밀 분석 실행", use_container_width=True):
-            
-            # 레이아웃 분할: 1단계 결함 탐지 (좌우 배치로 깔끔하게 변경)
             col1, col2 = st.columns(2)
             
             with st.spinner("AI 분석 엔진 가동 중..."):
@@ -94,12 +121,11 @@ if uploaded_file is not None:
 
                     st.write("---")
 
-                    # 5-2. 2단계: Gemini 상세 분석 (간략화된 프롬프트 요청)
+                    # 5-2. 2단계: Gemini 상세 분석 (인증 완료된 키 사용)
                     st.subheader("📝 Gemini AI 품질 판정 리포트")
                     
-                    client = genai.Client(api_key=user_api_key)
+                    client = genai.Client(api_key=st.session_state.verified_key)
                     
-                    # 분석 요구사항을 명확하고 간결하게 압축
                     prompt = f"""
                     당신은 제조 부품 품질 관리 전문가입니다. 
                     제공된 나사 이미지와 YOLOv8 탐지 정보({detected_info.strip()})를 바탕으로 다음 3가지 항목만 한국어로 간단명료하게 작성해주세요. 불필요한 서론은 생략하세요.
@@ -114,7 +140,6 @@ if uploaded_file is not None:
                         contents=[original_image, detected_image, prompt]
                     )
                     
-                    # 스타일이 적용된 컨테이너에 Gemini 리포트 출력
                     with st.container(border=True):
                         st.markdown(response.text)
                     
@@ -123,5 +148,4 @@ if uploaded_file is not None:
                 except Exception as e:
                     st.error(f"분석 중 오류 발생: {e}")
 else:
-    # 대기 화면 가이드 디자인
     st.image("https://images.unsplash.com/photo-1534224039826-c7a0dea0e66a?q=80&w=1000", caption="제조 품질 관리 시스템 데모", use_container_width=True)
