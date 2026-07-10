@@ -3,3 +3,6 @@ ultralytics
 opencv-python-headless
 numpy
 pillow
+google-genai
+streamlit
+pillow
