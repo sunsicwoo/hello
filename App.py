@@ -3,116 +3,125 @@ from ultralytics import YOLO
 from google import genai
 from PIL import Image
 import os
-import io
 
-# 1. 스트림릿 페이지 설정
-st.set_page_config(page_title="나사 결함 탐지 AI (YOLO + Gemini)", layout="centered")
-st.title("🔩 나사 결함 탐지 시스템 (YOLO + Gemini)")
-st.write("나사 사진을 업로드하면 YOLO 모델이 결함을 탐지하고, Gemini AI가 상세한 분석을 제공합니다.")
+# 1. 스트림릿 페이지 설정 (와이드 모드로 변경하여 시원한 레이아웃 제공)
+st.set_page_config(page_title="나사 결함 탐지 AI 시스템", layout="wide", initial_sidebar_state="expanded")
 
-# 2. 사이드바에 API 키 입력창 생성 (보안 유지)
-st.sidebar.title("🔑 API 설정")
+# 커스텀 타이틀 스타일 적용
+st.markdown("""
+    <style>
+    .main-title { font-size:32px; font-weight:bold; color:#1E3A8A; margin-bottom:5px; }
+    .sub-title { font-size:16px; color:#6B7280; margin-bottom:25px; }
+    </style>
+    """, unsafe_allow_html=True)
+
+st.markdown('<div class="main-title">🔩 나사 결함 정밀 검사 시스템</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-title">YOLOv8 Object Detection과 Gemini Vision AI를 결합한 가공 부품 품질 검사 솔루션</div>', unsafe_allow_html=True)
+
+# 2. 사이드바 구성 (디자인 개선)
+st.sidebar.header("⚙️ 시스템 설정")
 user_api_key = st.sidebar.text_input(
-    "Google Gemini API 키를 입력하세요", 
+    "Google Gemini API Key", 
     type="password", 
     placeholder="AIzaSy..."
 )
+st.sidebar.markdown("[🔑 API 키 발급받기](https://aistudio.google.com/)")
+st.sidebar.write("---")
 
-# AI Studio 링크 안내
-st.sidebar.markdown(
-    "[Google AI Studio에서 API 키 발급받기](https://aistudio.google.com/)"
+# Confidence Threshold 슬라이더
+conf_threshold = st.sidebar.slider(
+    "Confidence Threshold", 
+    min_value=0.00, max_value=1.00, value=0.25, step=0.05
 )
 
-# 3. YOLO 모델 로드 (GitHub에 업로드된 best.pt 파일 사용)
+# 3. YOLO 모델 로드
 model_path = 'best.pt' 
 yolo_model = None
 if os.path.exists(model_path):
     try:
         yolo_model = YOLO(model_path)
     except Exception as e:
-        st.error(f"YOLO 모델을 로드하는 중 오류가 발생했습니다: {e}")
+        st.sidebar.error(f"YOLO 로드 실패: {e}")
 else:
-    st.error(f"'{model_path}' 파일을 찾을 수 없습니다. GitHub에 업로드했는지 확인해주세요.")
+    st.sidebar.error(f"'{model_path}' 파일을 찾을 수 없습니다.")
 
-
-# 4. 파일 업로드 컴포넌트
-uploaded_file = st.file_uploader("나사 이미지를 업로드하세요...", type=["jpg", "jpeg", "png"])
+# 4. 메인 화면 - 파일 업로드
+uploaded_file = st.file_uploader("검사할 나사 이미지를 드래그앤드롭하거나 선택하세요.", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
-    # 업로드된 원본 이미지를 PIL 이미지로 로드
     original_image = Image.open(uploaded_file)
-    st.image(original_image, caption="업로드된 나사 이미지", use_container_width=True)
     
-    st.write("---")
-    
-    # 5. API 키와 YOLO 모델이 모두 준비되었는지 확인
+    # 5. API 및 모델 검증 후 대시보드 작동
     if not user_api_key:
-        st.error("보안 및 상세 분석을 위해 왼쪽 사이드바에 Gemini API 키를 먼저 입력해야 합니다.")
+        st.info("💡 좌측 사이드바에 Gemini API 키를 입력하면 정밀 리포트 기능이 활성화됩니다.")
     elif not yolo_model:
-        st.error("YOLO 모델이 준비되지 않아 분석을 시작할 수 없습니다.")
+        st.error("YOLO 모델이 준비되지 않았습니다.")
     else:
-        # 분석 실행 버튼
-        if st.button("나사 결함 정밀 분석 시작"):
-            with st.spinner("YOLO 모델이 결함을 탐지하고, Gemini가 상세 분석을 작성하고 있습니다..."):
+        # 탐지 실행 버튼
+        if st.button("⚡ 탐지 및 정밀 분석 실행", use_container_width=True):
+            
+            # 레이아웃 분할: 1단계 결함 탐지 (좌우 배치로 깔끔하게 변경)
+            col1, col2 = st.columns(2)
+            
+            with st.spinner("AI 분석 엔진 가동 중..."):
                 try:
-                    # 5-1. YOLOv8 모델로 객체 탐지 실행
-                    results = yolo_model(original_image)
-                    
-                    # 5-2. 탐지 결과가 반영된 이미지 가져오기 (박스가 쳐진 이미지)
+                    # 5-1. YOLOv8 객체 탐지
+                    results = yolo_model(original_image, conf=conf_threshold)
                     detected_img_array = results[0].plot()
-                    detected_image = Image.fromarray(detected_img_array[..., ::-1]) # RGB로 변환
+                    detected_image = Image.fromarray(detected_img_array[..., ::-1])
 
-                    # 5-3. 탐지 결과 정보를 텍스트로 정리 (Gemini에게 전달할 힌트)
+                    # 결과 텍스트 요약
                     detected_info = ""
                     if len(results[0].boxes) > 0:
-                        detected_info = "YOLO 모델이 다음 결함들을 탐지했습니다:\n"
+                        detected_info = "⚠️ 결함 발견:\n"
                         for box in results[0].boxes:
                             class_id = int(box.cls[0])
                             class_name = yolo_model.names[class_id]
                             confidence = float(box.conf[0])
-                            detected_info += f"- 결함 유형: {class_name}, 신뢰도: {confidence:.2f}\n"
+                            detected_info += f"- **{class_name}** (신뢰도: {confidence*100:.1f}%)\n"
                     else:
-                        detected_info = "YOLO 모델이 결함을 탐지하지 못했습니다. 나사가 정상일 가능성이 높습니다."
+                        detected_info = "✅ 특이사항 없음: 정상 제품으로 판단됩니다."
 
-                    # **화면에 YOLO 탐지 결과 이미지 표시**
-                    st.subheader("🔍 1단계: YOLO 결함 탐지 결과 (Bounding Box)")
-                    st.image(detected_image, caption="결함 부위가 박스로 표시된 이미지", use_container_width=True)
-                    st.write(detected_info)
+                    # 화면 표시 (1단계: 이미지 비교)
+                    with col1:
+                        st.subheader("📸 원본 이미지")
+                        st.image(original_image, use_container_width=True)
+                        
+                    with col2:
+                        st.subheader("🔍 YOLO 결함 탐지 결과")
+                        st.image(detected_image, use_container_width=True)
+                        st.markdown(detected_info)
 
                     st.write("---")
 
-                    # 5-4. Gemini API 호출하여 상세 분석 요청
+                    # 5-2. 2단계: Gemini 상세 분석 (간략화된 프롬프트 요청)
+                    st.subheader("📝 Gemini AI 품질 판정 리포트")
+                    
                     client = genai.Client(api_key=user_api_key)
                     
+                    # 분석 요구사항을 명확하고 간결하게 압축
                     prompt = f"""
-                    당신은 정밀 제조 부품 검사 전문가입니다. 
-                    제공된 나사(Screw/Bolt) 이미지와 YOLOv8 모델의 탐지 결과를 바탕으로 정밀한 분석을 제공해주세요.
-                    
-                    **YOLOv8 탐지 정보:**
-                    {detected_info}
-                    
-                    **분석 요청사항:**
-                    위 정보를 참고하여, 제공된 나사 이미지의 상태를 다음 양식에 맞춰 한국어로 간단히 기술해주세요:
-                    
-                    1. 결함 정밀 진단: (YOLO가 탐지한 결함이 실제 이미지에서 어떻게 보이는지 설명해주세요.)
-                    2. 발생 원인 추론: (왜 발생했을지 제조 공정이나 사용 환경 관점에서 추론해주세요.)
-                    3. 품질 영향도 평가: (이 결함이 어떤 영향을 미칠지 평가해주세요.)
-                    4. 최종 조치 권고 사항: (폐기, 재사용 가능, 정밀 재검사, 공정 개선 등 조치를 제안해주세요.)
+                    당신은 제조 부품 품질 관리 전문가입니다. 
+                    제공된 나사 이미지와 YOLOv8 탐지 정보({detected_info.strip()})를 바탕으로 다음 3가지 항목만 한국어로 간단명료하게 작성해주세요. 불필요한 서론은 생략하세요.
+
+                    1. **결함 부위 상태**: (YOLO 결과 검증 및 육안상 보이는 특징 요약)
+                    2. **예상 발생 원인**: (마모, 부식 등의 가공/사용상 원인 한 줄 추론)
+                    3. **현장 조치 가이드**: (재사용 가능, 즉시 폐기, 재검사 등 명확한 행동 지침)
                     """
                     
-                    # [수정 완료] 최신 라이트급 고성능 플래시 모델 반영
                     response = client.models.generate_content(
-                        model='gemini-3.1-flash-lite',
+                        model='gemini-2.5-flash',
                         contents=[original_image, detected_image, prompt]
                     )
                     
-                    # **결과 처리: Gemini 상세 분석 텍스트 표시**
-                    st.subheader("📝 2단계: Gemini AI 상세 분석 리포트")
-                    st.markdown(response.text)
-                    st.success("YOLO + Gemini 정밀 분석 완료!")
+                    # 스타일이 적용된 컨테이너에 Gemini 리포트 출력
+                    with st.container(border=True):
+                        st.markdown(response.text)
                     
-                except Exception as e:
-                    st.error(f"분석 중 오류가 발생했습니다. API 키가 올바른지, 혹은 모델 경로가 정확한지 확인해주세요. (오류 내용: {e})")
+                    st.toast("품질 분석이 성공적으로 완료되었습니다!", icon="🔥")
 
+                except Exception as e:
+                    st.error(f"분석 중 오류 발생: {e}")
 else:
-    st.info("나사 이미지를 업로드하면 분석 준비가 완료됩니다.")
+    # 대기 화면 가이드 디자인
+    st.image("https://images.unsplash.com/photo-1534224039826-c7a0dea0e66a?q=80&w=1000", caption="제조 품질 관리 시스템 데모", use_container_width=True)
